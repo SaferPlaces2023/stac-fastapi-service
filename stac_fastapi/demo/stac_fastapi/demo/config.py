@@ -5,9 +5,10 @@ from pymongo import GEOSPHERE, MongoClient, errors
 
 from stac_fastapi.types.config import ApiSettings
 
-DOMAIN = os.getenv("MONGO_HOST")
-PORT = os.getenv("MONGO_PORT")
-
+# DOMAIN = os.getenv("MONGO_HOST")
+# PORT = os.getenv("MONGO_PORT")
+DOMAIN = "127.0.0.1"
+PORT = 27017
 
 class MongoSettings(ApiSettings):
     """API settings."""
@@ -19,8 +20,8 @@ class MongoSettings(ApiSettings):
             client = MongoClient(
                 host=[str(DOMAIN) + ":" + str(PORT)],
                 serverSelectionTimeoutMS=3000,
-                username=os.getenv("MONGO_USER"),
-                password=os.getenv("MONGO_PASS"),
+                username="dev",     # os.getenv("MONGO_USER"),  (defined in docker-compose.yml)
+                password="stac",    # os.getenv("MONGO_PASS"),  (defined in docker-compose.yml)
             )
 
             # create indices - they are only created if they don't already exist

@@ -42,7 +42,7 @@ def run():
         uvicorn.run(
             "stac_fastapi.demo.app:app",
             host=settings.app_host,
-            port=settings.app_port,
+            port=8083,      # settings.app_port,
             log_level="info",
             reload=settings.reload,
         )
