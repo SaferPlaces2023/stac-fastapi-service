@@ -1,6 +1,7 @@
 """Item crud client."""
 import json
 from typing import Union, Optional, List, Type
+from urllib.parse import urljoin
 from bson.json_util import dumps
 import attr
 from datetime import datetime
@@ -12,7 +13,11 @@ from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.demo.config import MongoSettings
 from fastapi import HTTPException
 from stac_fastapi.types.core import BaseCoreClient
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection, LandingPage
+from fastapi import Request
+from stac_pydantic.links import Relations
+from stac_pydantic.shared import MimeTypes
+
 
 NumType = Union[float, int]
 
@@ -31,6 +36,51 @@ class CoreCrudClient(BaseCoreClient):
     # collection_serializer: Type[serializers.Serializer] = attr.ib(
     #     default=serializers.CollectionSerializer
     # )
+
+    def landing_page(self, **kwargs) -> LandingPage:
+        request: Request = kwargs["request"]
+        base_url = str(request.base_url)
+        extension_schemas = [
+            schema.schema_href for schema in self.extensions if schema.schema_href
+        ]
+        landing_page = self._landing_page(
+            base_url=base_url,
+            conformance_classes=self.conformance_classes(),
+            extension_schemas=extension_schemas,
+        )
+        # Add Collections links
+        collections = self.all_collections(request=kwargs["request"])
+        for collection in collections:
+            landing_page["links"].append(
+                {
+                    "rel": Relations.child.value,
+                    "type": MimeTypes.json.value,
+                    "title": collection.get("title") or collection.get("id"),
+                    "href": urljoin(base_url, f"collections/{collection['id']}"),
+                }
+            )
+        
+        # Add OpenAPI URL
+        landing_page["links"].append(
+            {
+                "rel": "service-desc",
+                "type": "application/vnd.oai.openapi+json;version=3.0",
+                "title": "OpenAPI service description",
+                "href": urljoin(base_url, request.app.openapi_url.lstrip("/")),
+            }
+        )
+        
+        # Add human readable service-doc
+        landing_page["links"].append(
+            {
+                "rel": "service-doc",
+                "type": "text/html",
+                "title": "OpenAPI service documentation",
+                "href": urljoin(base_url, request.app.docs_url.lstrip("/")),
+            }
+        )
+        print("LANDING   ---  ",landing_page)
+        return landing_page
 
     def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
@@ -90,6 +140,8 @@ class CoreCrudClient(BaseCoreClient):
         self, search_request: BaseSearchPostRequest, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
+        print("POST SEARCH")
+        print(search_request)
         base_url = str(kwargs["request"].base_url)
         queries = {}
 
@@ -114,6 +166,21 @@ class CoreCrudClient(BaseCoreClient):
                 for (op, value) in expr.items():
                     key_filter = {field: {f"${op}": value}}
                     queries.update(**key_filter)
+
+        if search_request.bbox:
+            print("BBOX")
+            bbox_filter = {
+                "bbox": {
+                    "$geoWithin": {
+                        "$box": search_request.bbox
+                    }
+                }
+            }
+            print("BBOX FILTER")
+            print(bbox_filter)
+            queries.update(**bbox_filter)
+            print("QUERIES")
+            print(queries)
 
         results = (self.item_table.find(queries).limit(search_request.limit))
 
