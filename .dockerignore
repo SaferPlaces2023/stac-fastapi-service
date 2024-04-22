@@ -1,0 +1,4 @@
+*.egg-info
+*build
+mongo_data
+*__pycache__

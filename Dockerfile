@@ -8,6 +8,8 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN python -m pip install stac-fastapi.types stac-fastapi.api stac-fastapi.extensions
+
 # update certs used by Requests
 ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
