@@ -18,6 +18,11 @@ from fastapi import Request
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
+from geojson_pydantic.geometries import (
+    MultiPolygon,
+    Polygon,
+)
+from stac_pydantic.shared import BBox
 
 NumType = Union[float, int]
 
@@ -79,7 +84,6 @@ class CoreCrudClient(BaseCoreClient):
                 "href": urljoin(base_url, request.app.docs_url.lstrip("/")),
             }
         )
-        print("LANDING   ---  ",landing_page)
         return landing_page
 
     def all_collections(self, **kwargs) -> Collections:
@@ -140,10 +144,10 @@ class CoreCrudClient(BaseCoreClient):
         self, search_request: BaseSearchPostRequest, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
-        print("POST SEARCH")
-        print(search_request)
         base_url = str(kwargs["request"].base_url)
         queries = {}
+
+        queries.update({"collection": {"$in": search_request.collections}})
 
         if search_request.intersects:
             intersect_filter = {
@@ -168,19 +172,25 @@ class CoreCrudClient(BaseCoreClient):
                     queries.update(**key_filter)
 
         if search_request.bbox:
-            print("BBOX")
             bbox_filter = {
                 "bbox": {
                     "$geoWithin": {
-                        "$box": search_request.bbox
+                        "$geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [search_request.bbox[0], search_request.bbox[1]],
+                                    [search_request.bbox[2], search_request.bbox[1]],
+                                    [search_request.bbox[2], search_request.bbox[3]],
+                                    [search_request.bbox[0], search_request.bbox[3]],
+                                    [search_request.bbox[0], search_request.bbox[1]]
+                                ]
+                            ]
+                        }
                     }
                 }
             }
-            print("BBOX FILTER")
-            print(bbox_filter)
             queries.update(**bbox_filter)
-            print("QUERIES")
-            print(queries)
 
         results = (self.item_table.find(queries).limit(search_request.limit))
 
