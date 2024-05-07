@@ -4,7 +4,7 @@ from typing import Union, Optional, List, Type
 from urllib.parse import urljoin
 from bson.json_util import dumps
 import attr
-from datetime import datetime
+from datetime import datetime, timedelta
 from stac_fastapi.demo import serializers
 from pydantic import ValidationError
 from stac_fastapi.demo.types.error_checks import ErrorChecks
@@ -18,13 +18,33 @@ from fastapi import Request
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
-from geojson_pydantic.geometries import (
-    MultiPolygon,
-    Polygon,
-)
 from stac_pydantic.shared import BBox
+import xarray as xr
+import s3fs
 
 NumType = Union[float, int]
+
+
+
+def generate_month_list(start_date, end_date):
+    # Parse start and end dates
+    # format like 2021-01-19T00:00:00Z
+    date_format = "%Y-%m-%dT%H:%M:%SZ"
+    start = datetime.strptime(start_date, date_format)
+    end = datetime.strptime(end_date, date_format)
+
+    # Initialize list to store formatted dates
+    month_list = []
+
+    # Iterate through each month between start and end dates
+    while start <= end:
+        # Format current date as YYYYMM and append to list
+        month_list.append(start.strftime("%Y%m"))
+        # Move to the next month
+        start += timedelta(days=32)
+        start = start.replace(day=1)
+
+    return month_list
 
 
 @attr.s
@@ -136,6 +156,7 @@ class CoreCrudClient(BaseCoreClient):
             "bbox": bbox,
             "limit": limit,
             "token": token,
+            "datetime": datetime,
             "query": json.loads(query) if query else query,
         }
         pass
@@ -161,6 +182,30 @@ class CoreCrudClient(BaseCoreClient):
                 }
             }
             queries.update(**intersect_filter)
+
+
+        print("DATETIME")
+        print(search_request.datetime)
+        str_start_date = search_request.datetime.split("/")[0]
+        str_end_date = search_request.datetime.split("/")[1]
+        print(str_start_date)
+        print(str_end_date)
+
+        parsed_dates = generate_month_list(str_start_date, str_end_date)
+        print(parsed_dates)
+        print("+++++++++++++++++++++++++++++++++++++")
+        # # parse date format like 2021-01-19T00:00:00Z
+        # date_format = "%Y-%m-%dT%H:%M:%SZ"
+        # start_date = datetime.strptime(str_start_date,date_format)
+        # end_date = datetime.strptime(str_end_date,date_format)
+        print("---")
+        if search_request.datetime:
+            datetime_filter = {
+                "properties.issue_date": { "$in": parsed_dates }
+            }
+            print("QUERY")
+            print(datetime_filter)
+            queries.update(**datetime_filter)
 
         if search_request.query:
             if type(search_request.query) == str:
@@ -200,3 +245,92 @@ class CoreCrudClient(BaseCoreClient):
             type="FeatureCollection",
             features=items
         )
+
+    
+    def test_endpoint() -> str:
+        return "Hello World"
+
+
+    # def post_search(
+    #     self, search_request: BaseSearchPostRequest, **kwargs
+    # ) -> ItemCollection:
+    #     """POST search catalog."""
+    #     base_url = str(kwargs["request"].base_url)
+    #     queries = {}
+
+    #     queries.update({"collection": {"$in": search_request.collections}})
+
+    #     if search_request.intersects:
+    #         intersect_filter = {
+    #             "geometry": {
+    #                 "$geoIntersects": {
+    #                     "$geometry": {
+    #                         "type": search_request.intersects.type,
+    #                         "coordinates": search_request.intersects.coordinates,
+    #                     }
+    #                 }
+    #             }
+    #         }
+    #         queries.update(**intersect_filter)
+
+    #     if search_request.query:
+    #         if type(search_request.query) == str:
+    #             search_request.query = json.loads(search_request.query)
+    #         for (field_name, expr) in search_request.query.items():
+    #             field = "properties." + field_name
+    #             for (op, value) in expr.items():
+    #                 key_filter = {field: {f"${op}": value}}
+    #                 queries.update(**key_filter)
+
+    #     if search_request.bbox:
+    #         bbox_filter = {
+    #             "bbox": {
+    #                 "$geoWithin": {
+    #                     "$geometry": {
+    #                         "type": "Polygon",
+    #                         "coordinates": [
+    #                             [
+    #                                 [search_request.bbox[0], search_request.bbox[1]],
+    #                                 [search_request.bbox[2], search_request.bbox[1]],
+    #                                 [search_request.bbox[2], search_request.bbox[3]],
+    #                                 [search_request.bbox[0], search_request.bbox[3]],
+    #                                 [search_request.bbox[0], search_request.bbox[1]]
+    #                             ]
+    #                         ]
+    #                     }
+    #                 }
+    #             }
+    #         }
+    #         queries.update(**bbox_filter)
+
+    #     results = (self.item_table.find(queries).limit(search_request.limit))
+
+    #     items = [json.loads(dumps(item)) for item in results]
+    #     print("ITEMS")
+    #     print(items)
+    #     print("...")
+    #     fs_s3 = s3fs.S3FileSystem(anon=True) 
+
+    #     # read nc files and return the data in assets field
+    #     for item in items:
+    #         print(item['assets'])
+    #         print("--")
+    #         if item["assets"]:
+    #             file_nc = item["assets"]['data']['href']
+    #             s3_file_obj = fs_s3.open(file_nc, mode='rb')
+
+    #             data = xr.open_dataset(s3_file_obj,engine='h5netcdf')
+    #             print(data)
+
+    #             # cast time to string
+    #             data['time'] = data['time'].astype(str)
+
+    #             item['assets']['data']['values'] = data.to_dict()
+        
+    #     print("ITEMS")
+    #     print(items)
+
+    #     return ItemCollection(
+    #         type="FeatureCollection",
+    #         features=items
+    #     )

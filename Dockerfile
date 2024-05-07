@@ -9,6 +9,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install stac-fastapi.types stac-fastapi.api stac-fastapi.extensions
+RUN pip install xarray[complete] s3fs
 
 # update certs used by Requests
 ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
